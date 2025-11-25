@@ -6,9 +6,11 @@ from torchvision import models
 from collections import Counter
 from torchvision.transforms import v2
 
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, balanced_accuracy_score, f1_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, f1_score
 
 import matplotlib.pyplot as plt
+
+import numpy as np
 
 class ImageDataset(Dataset):
     def __init__(self, data_dir, transform = None):
@@ -38,16 +40,18 @@ train_transform = v2.Compose([
     ),
     v2.RandomHorizontalFlip(p=0.5),     # Volteo horizontal 50%
     v2.ToDtype(torch.float32, scale=True),  # Convierte a float y divide entre 255
+    v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 tensor_transform = v2.Compose([
     v2.ToImage(),  # Convierte PIL → Tensor
-    v2.ToDtype(torch.float32, scale=True)
+    v2.ToDtype(torch.float32,scale=True),
+    v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-train_dataset = ImageDataset("Datasets/ASD-FIC_dataset/train/", transform=tensor_transform)
+train_dataset = ImageDataset("Datasets/ASD-FIC_dataset/train/", transform=train_transform)
 
-train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=False)
+train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=True)
 
 valid_dataset = ImageDataset("Datasets/ASD-FIC_dataset/valid/", transform=tensor_transform)
 
@@ -60,10 +64,19 @@ test_dataloader = DataLoader(test_dataset, batch_size=10, shuffle=False)
 modelo= models.vgg19(weights="IMAGENET1K_V1")
 modelo.classifier[6] = nn.Linear(4096, 2)
 
+modelo = modelo.to("xpu")
+
+for param in modelo.features.parameters():
+    param.requires_grad = False
+
+for param in modelo.features[24:].parameters():  # últimas capas convolucionales
+    param.requires_grad = True
+
 # TRAINING LOOP
 # Loss function
 criterion= nn.CrossEntropyLoss()
-optimizer= torch.optim.Adam(modelo.parameters(), lr=1e-3) #Adam suele ser el mejor para  la mayoría de los casos. 
+criterion = criterion.to("xpu")
+optimizer= torch.optim.Adam(modelo.parameters(), lr=1e-4) #Adam suele ser el mejor para  la mayoría de los casos. 
 EPOCHS= 100
 setps_per_epoch = 150
 patience = 5
@@ -84,14 +97,14 @@ for epoch in range(EPOCHS):
             # si se acabó el dataset, reiniciamos el iterador
             data_iter = iter(train_dataloader)
             images, labels = next(data_iter)
-
+        images = images.to("xpu")
+        labels = labels.to("xpu")
         optimizer.zero_grad()
         outputs = modelo(images)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-
-        running_loss += loss.item()
+        running_loss += loss.item() * images.size(0)
 
     train_loss= running_loss / len(train_dataloader.dataset)
     train_losses.append(train_loss)
@@ -103,13 +116,14 @@ for epoch in range(EPOCHS):
     with torch.no_grad():
         for data, labels in valid_dataloader:
             #Aquí no se optimiza ni se hace step puesto que es validación con lo que el modelo tiene ahora y ya entrenado, sin tocar nada. 
+            data = data.to("xpu")
+            labels = labels.to("xpu")
             outputs= modelo(data)
             loss= criterion(outputs, labels)
             running_loss += loss.item() * data.size(0)
 
     val_loss= running_loss / len(valid_dataloader.dataset)
     val_losses.append(val_loss)
-
     if best_val_loss is None:
         best_val_loss = val_loss
         patience_count = 0
@@ -140,6 +154,8 @@ all_labels = []
 with torch.no_grad():
     for batch_x, batch_y in test_dataloader:
         
+        batch_x = batch_x.to("xpu")
+        batch_y = batch_y.to("xpu")
         outputs = modelo(batch_x)    
         # Predicción: índice de la clase con mayor score
         preds = torch.argmax(outputs, dim=1)
@@ -154,10 +170,10 @@ all_labels = torch.cat(all_labels)
 
 # ESTO ES PARA LA ACCURACY y f1 (te interesa que esta ultima sea buena)
 
-balanced_acc= balanced_accuracy_score(all_labels, all_preds)
+acc= accuracy_score(all_labels, all_preds)
 f1= f1_score(all_labels, all_preds, average= "macro")
 
-print("f1:", f1, "\n", "Bacc:", balanced_acc)
+print("f1:", f1, "\n", "Acc:", acc)
 
 
 # ESTO ES PARA LA CM
