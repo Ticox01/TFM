@@ -3,24 +3,59 @@ import random
 import shutil
 
 dataset_path = "Datasets/FADC_DATASET"
-dataset_autistic_folder = "ASD"
+dataset_autistic_folder = "ASD_children"
 dataset_nonautistic_folder = "TD"
 autistic_folder = "autistic"
 nonautistic_folder = "non_autistic"
 folders_to_create = ["test","train","valid"]
-train_porcentaje = 86
-valid_porcentaje = 26
+max_images = 500
+train_porcentaje = 80
+valid_porcentaje = 20
 
-def genearte_train_valid_test(images_list, train_porcentaje, valid_porcentaje):
-    images_train_number = int(len(images_list) * train_porcentaje / 100)
+def genearte_train_valid_test(images_list, minmum_len, train_porcentaje, valid_porcentaje, max_images):
+
+    images_train_number = int(minmum_len * train_porcentaje / 100)
+    images_test_number = minmum_len - images_train_number
     images_valid_number = int(images_train_number * valid_porcentaje / 100)
+    images_train_number = images_train_number - images_valid_number
 
-    all_train_images = random.sample(images_list, images_train_number)
-    valid_images = random.sample(all_train_images, images_valid_number)
-    train_images = [x for x in all_train_images if x not in valid_images]
-    test_images = [x for x in images_list if x not in all_train_images]
+    children = list(images_list.keys())
+    random.shuffle(children)
 
-    return train_images, valid_images, test_images
+    images_train_count = 0
+    images_valid_count = 0
+    images_test_count = 0
+
+    train = []
+    valid = []
+    test = []
+    for child in children:
+        if child == "length":
+            continue
+
+        if len(images_list[child]) >= max_images:
+            images = random.sample(images_list[child], 50)
+        else:
+            images = images_list[child]
+
+        if images_train_count < images_train_number:
+            train.extend(images)
+            images_train_count = images_train_count + len(images)
+        elif images_valid_count < images_valid_number:
+            valid.extend(images)
+            images_valid_count = images_valid_count + len(images)
+        elif images_test_count < images_test_number:
+            test.extend(images)
+            images_test_count = images_test_count + len(images)
+        else:
+            break
+    
+    print("Valores calculados:")
+    print(images_train_number,images_valid_number,images_test_number)
+    print("Valores Obtenidos:")
+    print(len(train), len(valid), len(test))
+
+    return train, valid, test
 
 def copy_image_to_final_folder(image_path, final_folder, index):
     shutil.copyfile(image_path, final_folder+f"/{index:04d}.jpg")
@@ -36,24 +71,36 @@ for folder in folders_to_create:
         os.makedirs(dataset_path+"/"+folder+"/"+autistic_folder)
         os.makedirs(dataset_path+"/"+folder+"/"+nonautistic_folder)
 
-autistic_images = []
-non_autistic_images = []
+autistic_images = {}
+non_autistic_images = {}
 
-for folder in os.listdir(dataset_path):
-    for image in os.listdir(dataset_path+"/"+folder):
-        if folder == dataset_autistic_folder:
-            autistic_images.append(dataset_path+"/"+folder+"/"+image)
-        elif folder == dataset_nonautistic_folder:
-            non_autistic_images.append(dataset_path+"/"+folder+"/"+image)
+# Create dict with autistic children
+length = 0
+for child in os.listdir(f"{dataset_path}/{dataset_autistic_folder}"):
+    for image in os.listdir(f"{dataset_path}/{dataset_autistic_folder}/{child}"):
+        if child not in autistic_images.keys():
+            autistic_images[child] = [f"{dataset_path}/{dataset_autistic_folder}/{child}/{image}"]
+        else:
+            autistic_images[child].append(f"{dataset_path}/{dataset_autistic_folder}/{child}/{image}")
+        length = length + 1
 
-minmum_len = min(len(autistic_images), len(non_autistic_images))
-random.shuffle(autistic_images)
-random.shuffle(non_autistic_images)
-autistic_images = autistic_images[0:minmum_len]
-non_autistic_images = non_autistic_images[0:minmum_len]
+autistic_images["length"] = length
+# Create dict with non autistic children
+length = 0
+for image in os.listdir(f"{dataset_path}/{dataset_nonautistic_folder}"):
+    child = image.split(".")[0]
+    if child not in non_autistic_images.keys():
+        non_autistic_images[child] = [f"{dataset_path}/{dataset_nonautistic_folder}/{image}"]
+    else:
+        non_autistic_images[child].append(f"{dataset_path}/{dataset_nonautistic_folder}/{image}")
+    length = length + 1
 
-train_images_autisitc, valid_images_autisitc, test_images_autisitc = genearte_train_valid_test(autistic_images, train_porcentaje, valid_porcentaje)
-train_images_nonautisitc, valid_images_nonautisitc, test_images_nonautisitc = genearte_train_valid_test(non_autistic_images, train_porcentaje, valid_porcentaje)
+non_autistic_images["length"] = length
+
+minmum_len = min(non_autistic_images["length"], autistic_images["length"])
+
+train_images_autisitc, valid_images_autisitc, test_images_autisitc = genearte_train_valid_test(autistic_images, minmum_len, train_porcentaje, valid_porcentaje, max_images)
+train_images_nonautisitc, valid_images_nonautisitc, test_images_nonautisitc = genearte_train_valid_test(non_autistic_images, minmum_len, train_porcentaje, valid_porcentaje, max_images)
 
 train_path = f"{dataset_path}/train"
 valid_path = f"{dataset_path}/valid"
