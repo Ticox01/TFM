@@ -38,6 +38,8 @@ train_transform = v2.Compose([
         translate=(0.2, 0.2),           # 20% de traslación horizontal y vertical
         scale=(0.9, 1.1)                # Zoom 0.9x–1.1x
     ),
+    v2.Resize(256),
+    v2.CenterCrop(224),
     v2.RandomHorizontalFlip(p=0.5),     # Volteo horizontal 50%
     v2.ToDtype(torch.float32, scale=True),  # Convierte a float y divide entre 255
     v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -45,19 +47,30 @@ train_transform = v2.Compose([
 
 tensor_transform = v2.Compose([
     v2.ToImage(),  # Convierte PIL → Tensor
+    v2.Resize(256),
+    v2.CenterCrop(224),
     v2.ToDtype(torch.float32,scale=True),
     v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-train_dataset = ImageDataset("Datasets/FDAC_DATASET/train/", transform=train_transform)
+train_dataset = ImageDataset("Datasets/ASD-FIC_dataset/train/", transform=tensor_transform)
 
-train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=False)
 
-valid_dataset = ImageDataset("Datasets/FDAC_DATASET/valid/", transform=tensor_transform)
+# Show image for test
+# images, labels = next(iter(train_dataloader))
+
+# image = images[0]
+# image = image.permute(1, 2, 0)
+# plt.imshow(image.clamp(0, 1))
+# plt.axis("off")
+# plt.show()
+
+valid_dataset = ImageDataset("Datasets/ASD-FIC_dataset/valid/", transform=tensor_transform)
 
 valid_dataloader = DataLoader(valid_dataset, batch_size=10, shuffle=False)
 
-test_dataset = ImageDataset("Datasets/FDAC_DATASET/test/", transform=tensor_transform)
+test_dataset = ImageDataset("Datasets/ASD-FIC_dataset/test/", transform=tensor_transform)
 
 test_dataloader = DataLoader(test_dataset, batch_size=10, shuffle=False)
 
